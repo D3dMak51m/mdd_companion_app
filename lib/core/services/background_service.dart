@@ -40,12 +40,16 @@ class AppBackgroundService {
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
-        autoStart: false, // Запускаем вручную после логина
+        autoStart: false,
         isForegroundMode: true,
         notificationChannelId: 'mdd_foreground',
         initialNotificationTitle: 'MDD Companion',
         initialNotificationContent: 'Monitoring active',
         foregroundServiceNotificationId: 888,
+        foregroundServiceTypes: [
+          AndroidForegroundType.connectedDevice,
+          AndroidForegroundType.location,
+        ],
       ),
       iosConfiguration: IosConfiguration(
         autoStart: false,

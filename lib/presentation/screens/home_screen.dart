@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:mdd_companion_app/presentation/screens/device_settings_screen.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/background_service.dart';
 import '../../core/services/ble_service.dart';
@@ -89,9 +90,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 return ListTile(
                   title: Text(device.name.isNotEmpty ? device.name : 'Unknown Device'),
                   subtitle: Text(device.id),
-                  trailing: ElevatedButton(
-                    onPressed: () => _connectAndStartService(device.id),
-                    child: const Text('Connect'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.settings),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DeviceSettingsScreen(deviceId: device.id),
+                            ),
+                          );
+                        },
+                      ),
+                      ElevatedButton(
+                        onPressed: () => _connectAndStartService(device.id),
+                        child: const Text('Connect'),
+                      ),
+                    ],
                   ),
                 );
               },

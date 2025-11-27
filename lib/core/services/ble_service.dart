@@ -77,7 +77,23 @@ class BleService {
     }
   }
 
-  Future<void> disconnect() async {
-    await _connectionSubscription?.cancel();
+  Future<void> writeConfig(String deviceId, List<int> configBytes) async {
+    final characteristic = QualifiedCharacteristic(
+      serviceId: Uuid.parse(AppConstants.serviceUuid),
+      characteristicId: Uuid.parse(AppConstants.configCharacteristicUuid),
+      deviceId: deviceId,
+    );
+
+    try {
+      await _ble.writeCharacteristicWithResponse(characteristic, value: configBytes);
+      print("BLE: Config written successfully");
+    } catch (e) {
+      print("BLE: Failed to write config: $e");
+      // Не выбрасываем ошибку критично, так как API важнее
+    }
   }
-}
+
+    Future<void> disconnect() async {
+      await _connectionSubscription?.cancel();
+    }
+  }

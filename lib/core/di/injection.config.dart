@@ -19,11 +19,15 @@ import 'package:internet_connection_checker_plus/internet_connection_checker_plu
 import '../../data/datasources/local/auth_local_datasource.dart' as _i17;
 import '../../data/datasources/remote/auth_remote_datasource.dart' as _i1057;
 import '../../data/repositories/auth_repository_impl.dart' as _i895;
+import '../../data/repositories/device_repository_impl.dart' as _i34;
 import '../../data/repositories/sos_repository_impl.dart' as _i853;
 import '../../domain/repositories/auth_repository.dart' as _i1073;
+import '../../domain/repositories/device_repository.dart' as _i454;
 import '../../domain/repositories/incident_repository.dart' as _i333;
 import '../../domain/repositories/sos_repository.dart' as _i585;
 import '../../presentation/bloc/auth/auth_bloc.dart' as _i605;
+import '../../presentation/bloc/device_settings/device_settings_bloc.dart'
+    as _i493;
 import '../../presentation/bloc/incident/incident_bloc.dart' as _i105;
 import '../../repositories/incident_repository_impl.dart' as _i331;
 import '../network/dio_client.dart' as _i667;
@@ -65,6 +69,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i333.IncidentRepository>(
       () => _i331.IncidentRepositoryImpl(gh<_i361.Dio>()),
     );
+    gh.lazySingleton<_i454.DeviceRepository>(
+      () => _i34.DeviceRepositoryImpl(gh<_i361.Dio>(), gh<_i1019.BleService>()),
+    );
     gh.lazySingleton<_i585.SosRepository>(
       () => _i853.SosRepositoryImpl(gh<_i361.Dio>()),
     );
@@ -73,6 +80,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i105.IncidentBloc>(
       () => _i105.IncidentBloc(gh<_i333.IncidentRepository>()),
+    );
+    gh.factory<_i493.DeviceSettingsBloc>(
+      () => _i493.DeviceSettingsBloc(gh<_i454.DeviceRepository>()),
     );
     gh.lazySingleton<_i1073.AuthRepository>(
       () => _i895.AuthRepositoryImpl(

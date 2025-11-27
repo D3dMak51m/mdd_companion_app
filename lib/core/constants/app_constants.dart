@@ -1,5 +1,6 @@
 class AppConstants {
   static const String baseUrl = 'http://192.168.1.2:8000'; // Замените на реальный URL
+  // static const String baseUrl = 'http://10.0.2.2:8000'; // Замените на реальный URL
 
   // BLE UUIDs
   static const String serviceUuid = '0000180d-0000-1000-8000-00805f9b34fb';
