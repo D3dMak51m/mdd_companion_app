@@ -7,6 +7,8 @@ abstract class AuthLocalDataSource {
   Future<String?> getAccessToken();
   Future<String?> getRefreshToken();
   Future<void> clearTokens();
+  Future<void> saveUserId(String id);
+  Future<String?> getUserId();
 }
 
 @LazySingleton(as: AuthLocalDataSource)
@@ -32,8 +34,19 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   }
 
   @override
+  Future<void> saveUserId(String id) async {
+    await _storage.write(key: AppConstants.userIdKey, value: id);
+  }
+
+  @override
+  Future<String?> getUserId() async {
+    return await _storage.read(key: AppConstants.userIdKey);
+  }
+
+  @override
   Future<void> clearTokens() async {
     await _storage.delete(key: AppConstants.accessTokenKey);
     await _storage.delete(key: AppConstants.refreshTokenKey);
+    await _storage.delete(key: AppConstants.userIdKey);
   }
 }

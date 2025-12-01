@@ -36,6 +36,10 @@ dependencies:
   dartz: ^0.10.1
   firebase_in_app_messaging: 0.9.0+4
   firebase_messaging: ^16.0.4
+  device_info_plus: ^12.2.0
+  mobile_scanner: ^7.1.3
+  url_launcher: ^6.3.2
+  map_launcher: ^4.4.2
 
 dev_dependencies:
   flutter_test:

@@ -14,17 +14,18 @@ import '../di/injection.dart';
 import 'ble_service.dart';
 import 'location_service.dart';
 import '../../domain/repositories/sos_repository.dart';
+import '../../domain/repositories/device_repository.dart';
 import '../../data/models/sos_payload_model.dart';
+import '../../data/models/location_payload_model.dart';
 
 @lazySingleton
 class AppBackgroundService {
   Future<void> initialize() async {
     final service = FlutterBackgroundService();
 
-    // Настройка уведомлений для Android Foreground Service
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'mdd_foreground',
-      'MDD Watch Service',
+      'MDD Companion Service',
       description: 'Monitoring connection with MDD Watch',
       importance: Importance.low,
     );
@@ -42,14 +43,14 @@ class AppBackgroundService {
         onStart: onStart,
         autoStart: false,
         isForegroundMode: true,
-        notificationChannelId: 'mdd_foreground',
-        initialNotificationTitle: 'MDD Companion',
-        initialNotificationContent: 'Monitoring active',
-        foregroundServiceNotificationId: 888,
         foregroundServiceTypes: [
           AndroidForegroundType.connectedDevice,
           AndroidForegroundType.location,
         ],
+        notificationChannelId: 'mdd_foreground',
+        initialNotificationTitle: 'MDD Companion',
+        initialNotificationContent: 'Service initialized',
+        foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
         autoStart: false,
@@ -72,8 +73,6 @@ class AppBackgroundService {
   }
 }
 
-// --- ENTRY POINTS ---
-
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,32 +84,53 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
-  // 1. Инициализация зависимостей в новом изоляте
   await Hive.initFlutter();
-  // Важно: configureDependencies должен быть безопасен для повторного вызова или
-  // get_it должен быть сброшен, но в новом изоляте get_it пуст, так что ок.
+  final settingsBox = await Hive.openBox(AppConstants.settingsBoxName);
   await configureDependencies();
 
   final bleService = getIt<BleService>();
   final sosRepository = getIt<SosRepository>();
+  final deviceRepository = getIt<DeviceRepository>();
   final locationService = getIt<LocationService>();
+  final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-  // Получаем сохраненный ID устройства (предполагаем, что сохранили его при привязке)
-  // Для примера хардкодим или берем из Hive, если бы реализовали DeviceRepository
-  // В реальном коде: final deviceId = await deviceRepository.getLinkedDeviceId();
-  String? linkedDeviceId;
+  String? activeDeviceId;
 
-  // Слушаем команды от UI
   service.on('stopService').listen((event) {
+    bleService.disconnect();
     service.stopSelf();
   });
 
   service.on('setDeviceId').listen((event) {
-    linkedDeviceId = event?['deviceId'];
-    if (linkedDeviceId != null) {
-      _startMonitoring(bleService, sosRepository, locationService, linkedDeviceId!);
+    final deviceId = event?['deviceId'];
+    print("Background Service: Received setDeviceId command: $deviceId");
+
+    if (deviceId != null) {
+      activeDeviceId = deviceId;
+      settingsBox.put('active_device_id', deviceId);
+      _updateNotification(flutterLocalNotificationsPlugin, "Connecting to $deviceId...");
+      _startMonitoring(bleService, sosRepository, deviceRepository, locationService, deviceId, flutterLocalNotificationsPlugin);
     }
   });
+
+  // --- НОВЫЙ ОБРАБОТЧИК ДЛЯ ОТПРАВКИ КОНФИГА ---
+  service.on('sendInitialConfig').listen((event) async {
+    final deviceId = event?['deviceId'];
+    final sensitivity = event?['sensitivity'] as int? ?? 5;
+    final timeout = event?['timeout'] as int? ?? 30;
+
+    if (deviceId != null) {
+      print("Background Service: Sending initial config to $deviceId");
+      try {
+        // Пытаемся записать конфиг. Если устройство подключено, это сработает.
+        await bleService.writeConfig(deviceId, sensitivity, timeout);
+        print("Background Service: Config sent successfully");
+      } catch (e) {
+        print("Background Service: Failed to send config: $e");
+      }
+    }
+  });
+  // ---------------------------------------------
 
   if (service is AndroidServiceInstance) {
     service.on('setAsForeground').listen((event) {
@@ -121,54 +141,104 @@ void onStart(ServiceInstance service) async {
     });
   }
 
-  // Если устройство уже известно (например, передано при старте или сохранено)
-  // _startMonitoring(...)
+  if (activeDeviceId == null) {
+    activeDeviceId = settingsBox.get('active_device_id');
+    if (activeDeviceId != null) {
+      print("Background Service: Restored device ID: $activeDeviceId");
+      _updateNotification(flutterLocalNotificationsPlugin, "Restoring connection...");
+      _startMonitoring(bleService, sosRepository, deviceRepository, locationService, activeDeviceId!, flutterLocalNotificationsPlugin);
+    } else {
+      _updateNotification(flutterLocalNotificationsPlugin, "Idle. No device connected.");
+    }
+  }
 }
 
 void _startMonitoring(
     BleService bleService,
     SosRepository sosRepository,
+    DeviceRepository deviceRepository,
     LocationService locationService,
     String deviceId,
+    FlutterLocalNotificationsPlugin notifPlugin,
     ) {
-  print("Background Service: Starting monitoring for $deviceId");
+  print("Background Service: Starting monitoring loop for $deviceId");
 
   bleService.connectToDevice(deviceId, (data) async {
-    print("Background Service: SOS Data Received: $data");
-
     try {
-      // 1. Парсинг данных (Пример: JSON в байтах)
       final jsonString = utf8.decode(data);
-      final jsonMap = jsonDecode(jsonString);
-      var payload = SosPayloadModel.fromJson(jsonMap);
+      print("Background Service: Raw Data: $jsonString");
 
-      // 2. Получение геолокации телефона
-      final position = await locationService.getCurrentPosition();
-      if (position != null) {
-        payload = payload.copyWithLocation(
-          lat: position.latitude,
-          lon: position.longitude,
-          alt: position.altitude,
+      final jsonMap = jsonDecode(jsonString);
+      final String msgType = jsonMap['type'] ?? 'SOS';
+
+      if (msgType == 'TRACKING') {
+        print("Background Service: TRACKING packet received");
+        final position = await locationService.getCurrentPosition();
+
+        if (position != null) {
+          final locationPayload = LocationPayloadModel(
+            lat: position.latitude,
+            lon: position.longitude,
+            speed: position.speed,
+            direction: position.heading,
+            batteryLevel: jsonMap['battery'] as int?,
+            status: 'ONLINE',
+            timestamp: DateTime.now().toUtc().toIso8601String(),
+          );
+          await deviceRepository.sendLocationUpdate(deviceId, locationPayload);
+          print("Background Service: Location sent to server");
+        }
+      } else {
+        print("Background Service: SOS packet received");
+        _updateNotification(notifPlugin, "SOS RECEIVED! Sending to server...");
+
+        var payload = SosPayloadModel.fromJson(jsonMap);
+        final position = await locationService.getCurrentPosition();
+        if (position != null) {
+          payload = payload.copyWithLocation(
+            lat: position.latitude,
+            lon: position.longitude,
+            alt: position.altitude,
+          );
+        }
+
+        final result = await sosRepository.sendSosSignal(payload);
+
+        result.fold(
+              (failure) {
+            print("Background Service: Failed to send SOS: ${failure.message}");
+            bleService.writeAck(deviceId, false);
+            _updateNotification(notifPlugin, "SOS Send Failed! Check internet.");
+          },
+              (success) {
+            print("Background Service: SOS sent successfully");
+            bleService.writeAck(deviceId, true);
+            _updateNotification(notifPlugin, "SOS Sent. Help is coming.");
+          },
         );
       }
-
-      // 3. Отправка на сервер
-      final result = await sosRepository.sendSosSignal(payload);
-
-      // 4. Подтверждение на часы
-      result.fold(
-            (failure) {
-          print("Background Service: Failed to send SOS: ${failure.message}");
-          bleService.writeAck(deviceId, false); // Ошибка
-        },
-            (success) {
-          print("Background Service: SOS sent successfully");
-          bleService.writeAck(deviceId, true); // Успех
-        },
-      );
     } catch (e) {
-      print("Background Service: Error processing SOS: $e");
+      print("Background Service: Error processing BLE data: $e");
       bleService.writeAck(deviceId, false);
     }
   });
+
+  _updateNotification(notifPlugin, "Monitoring: $deviceId");
+}
+
+void _updateNotification(FlutterLocalNotificationsPlugin plugin, String content) {
+  plugin.show(
+    888,
+    'MDD Companion',
+    content,
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'mdd_foreground',
+        'MDD Companion Service',
+        icon: '@mipmap/ic_launcher',
+        ongoing: true,
+        importance: Importance.low,
+      ),
+    ),
+  );
 }

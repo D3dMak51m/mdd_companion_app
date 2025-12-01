@@ -11,6 +11,14 @@ class UserModel extends User {
     required super.fullName,
   });
 
-  factory UserModel.fromJson(Map<String, dynamic> json) => _$UserModelFromJson(json);
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      // Ищем ID во всех возможных полях
+      id: (json['uuid'] ?? json['id'] ?? json['pk'] ?? '').toString(),
+      phone: (json['phone_number'] ?? json['phone'] ?? '').toString(),
+      fullName: (json['full_name'] ?? json['name'] ?? 'Unknown').toString(),
+    );
+  }
+
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
 }

@@ -20,6 +20,7 @@ import '../../data/datasources/local/auth_local_datasource.dart' as _i17;
 import '../../data/datasources/remote/auth_remote_datasource.dart' as _i1057;
 import '../../data/repositories/auth_repository_impl.dart' as _i895;
 import '../../data/repositories/device_repository_impl.dart' as _i34;
+import '../../data/repositories/incident_repository_impl.dart' as _i731;
 import '../../data/repositories/sos_repository_impl.dart' as _i853;
 import '../../domain/repositories/auth_repository.dart' as _i1073;
 import '../../domain/repositories/device_repository.dart' as _i454;
@@ -28,8 +29,9 @@ import '../../domain/repositories/sos_repository.dart' as _i585;
 import '../../presentation/bloc/auth/auth_bloc.dart' as _i605;
 import '../../presentation/bloc/device_settings/device_settings_bloc.dart'
     as _i493;
+import '../../presentation/bloc/devices/devices_bloc.dart' as _i567;
+import '../../presentation/bloc/history/sos_history_bloc.dart' as _i392;
 import '../../presentation/bloc/incident/incident_bloc.dart' as _i105;
-import '../../repositories/incident_repository_impl.dart' as _i331;
 import '../network/dio_client.dart' as _i667;
 import '../services/background_service.dart' as _i879;
 import '../services/ble_service.dart' as _i1019;
@@ -66,9 +68,6 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i361.Dio>(
       () => networkModule.dio(gh<_i17.AuthLocalDataSource>()),
     );
-    gh.lazySingleton<_i333.IncidentRepository>(
-      () => _i331.IncidentRepositoryImpl(gh<_i361.Dio>()),
-    );
     gh.lazySingleton<_i454.DeviceRepository>(
       () => _i34.DeviceRepositoryImpl(gh<_i361.Dio>(), gh<_i1019.BleService>()),
     );
@@ -78,16 +77,29 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i1057.AuthRemoteDataSource>(
       () => _i1057.AuthRemoteDataSourceImpl(gh<_i361.Dio>()),
     );
-    gh.factory<_i105.IncidentBloc>(
-      () => _i105.IncidentBloc(gh<_i333.IncidentRepository>()),
+    gh.lazySingleton<_i333.IncidentRepository>(
+      () => _i731.IncidentRepositoryImpl(gh<_i361.Dio>()),
     );
     gh.factory<_i493.DeviceSettingsBloc>(
       () => _i493.DeviceSettingsBloc(gh<_i454.DeviceRepository>()),
+    );
+    gh.factory<_i567.DevicesBloc>(
+      () => _i567.DevicesBloc(gh<_i454.DeviceRepository>()),
     );
     gh.lazySingleton<_i1073.AuthRepository>(
       () => _i895.AuthRepositoryImpl(
         gh<_i1057.AuthRemoteDataSource>(),
         gh<_i17.AuthLocalDataSource>(),
+      ),
+    );
+    gh.factory<_i392.SosHistoryBloc>(
+      () => _i392.SosHistoryBloc(gh<_i333.IncidentRepository>()),
+    );
+    gh.factory<_i105.IncidentBloc>(
+      () => _i105.IncidentBloc(
+        gh<_i333.IncidentRepository>(),
+        gh<_i1073.AuthRepository>(),
+        gh<_i941.NotificationService>(),
       ),
     );
     gh.factory<_i605.AuthBloc>(

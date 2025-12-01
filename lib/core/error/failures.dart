@@ -15,3 +15,7 @@ class ServerFailure extends Failure {
 class CacheFailure extends Failure {
   const CacheFailure(super.message);
 }
+
+class IncidentAlreadyTakenFailure extends Failure {
+  const IncidentAlreadyTakenFailure([super.message = "Incident already taken"]);
+}
