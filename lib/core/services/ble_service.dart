@@ -27,28 +27,50 @@ class BleService {
   }
 
   // Подключение
-  void connectToDevice(String deviceId, Function(List<int>) onDataReceived) {
-    _connectionSubscription?.cancel();
+  void connectToDevice(String deviceId, Function(List<int>) onDataReceived) async {
+    // Отменяем предыдущую подписку
+    await _connectionSubscription?.cancel();
+
+    // Очистка кэша
+    try { await _ble.clearGattCache(deviceId); } catch (_) {}
+
+    print("BLE: Connecting to $deviceId...");
 
     _connectionSubscription = _ble.connectToDevice(
       id: deviceId,
-      connectionTimeout: const Duration(seconds: 10),
-      servicesWithCharacteristicsToDiscover: {
-        Uuid.parse(AppConstants.serviceUuid): [
-          Uuid.parse(AppConstants.sosCharacteristicUuid),
-          Uuid.parse(AppConstants.ackCharacteristicUuid),
-          Uuid.parse(AppConstants.configCharacteristicUuid), // Добавили конфиг
-        ]
-      },
-    ).listen((state) {
+      connectionTimeout: const Duration(seconds: 10), // Таймаут на одну попытку
+      servicesWithCharacteristicsToDiscover: null,
+    ).listen((state) async {
       _connectionStateController.add(state.connectionState);
 
       if (state.connectionState == DeviceConnectionState.connected) {
         print("BLE: Connected to $deviceId");
+
+        // Discovery & MTU
+        try {
+          await _ble.discoverServices(deviceId);
+          await Future.delayed(const Duration(seconds: 1));
+          await _ble.requestMtu(deviceId: deviceId, mtu: 250);
+        } catch (e) {
+          print("BLE: Setup error: $e");
+        }
+
         _subscribeToSos(deviceId, onDataReceived);
       }
+
+      else if (state.connectionState == DeviceConnectionState.disconnected) {
+        print("BLE: Disconnected. Retrying in 5 seconds...");
+        // ВАЖНО: Библиотека сама не реконнектится, если стрим закрылся.
+        // Но connectToDevice возвращает стрим, который не закрывается при ошибке соединения,
+        // он просто шлет disconnected.
+        // Однако, если произошла ошибка (onError), стрим умрет.
+      }
     }, onError: (e) {
-      print("BLE Connection Error: $e");
+      print("BLE Connection Stream Error: $e");
+      // Если стрим упал с ошибкой, пробуем перезапустить подключение через паузу
+      Future.delayed(const Duration(seconds: 5), () {
+        connectToDevice(deviceId, onDataReceived);
+      });
     });
   }
 

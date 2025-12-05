@@ -3,29 +3,37 @@ import 'package:injectable/injectable.dart';
 
 @lazySingleton
 class LocationService {
+  /// Пытается получить текущую позицию с высокой точностью
   Future<Position?> getCurrentPosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return null;
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return null;
-    }
-
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return null;
-      }
+      if (permission == LocationPermission.denied) return null;
     }
+    if (permission == LocationPermission.deniedForever) return null;
 
-    if (permission == LocationPermission.deniedForever) {
+    try {
+      // Таймаут 5 секунд, чтобы не задерживать SOS слишком долго
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 5)
+        ),
+      );
+    } catch (e) {
       return null;
     }
+  }
 
-    return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    );
+  /// Получает последнее известное местоположение из кэша системы (Android/iOS)
+  Future<Position?> getLastKnownPosition() async {
+    try {
+      return await Geolocator.getLastKnownPosition();
+    } catch (e) {
+      return null;
+    }
   }
 }
