@@ -14,9 +14,21 @@ class SosRepositoryImpl implements SosRepository {
   @override
   Future<Either<Failure, void>> sendSosSignal(SosPayloadModel payload) async {
     try {
-      await _dio.post('/api/v1/sos/trigger/', data: payload.toJson());
+      final data = payload.toJson();
+      print("SOS Repo: Sending payload: $data");
+
+      await _dio.post('/api/v1/sos/trigger/', data: data);
       return const Right(null);
     } on DioException catch (e) {
+      // Логируем ответ сервера, чтобы видеть причину 400
+      print("SOS Repo Error Status: ${e.response?.statusCode}");
+      print("SOS Repo Error Body: ${e.response?.data}");
+
+      if (e.response?.statusCode == 400) {
+        // Возвращаем текст ошибки от сервера
+        return Left(ServerFailure("Validation Error: ${e.response?.data}"));
+      }
+
       return Left(ServerFailure(e.message ?? 'Failed to send SOS'));
     } catch (e) {
       return Left(ServerFailure(e.toString()));

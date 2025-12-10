@@ -16,6 +16,7 @@ SosPayloadModel _$SosPayloadModelFromJson(Map<String, dynamic> json) =>
       lon: (json['lon'] as num?)?.toDouble(),
       altitude: (json['altitude'] as num?)?.toDouble(),
       batteryLevel: (json['battery_level'] as num?)?.toInt(),
+      rawPayload: json['raw_payload'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$SosPayloadModelToJson(SosPayloadModel instance) =>
@@ -28,4 +29,5 @@ Map<String, dynamic> _$SosPayloadModelToJson(SosPayloadModel instance) =>
       'lon': instance.lon,
       'altitude': instance.altitude,
       'battery_level': instance.batteryLevel,
+      'raw_payload': instance.rawPayload,
     };

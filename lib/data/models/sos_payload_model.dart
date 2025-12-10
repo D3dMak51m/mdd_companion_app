@@ -21,6 +21,9 @@ class SosPayloadModel {
   @JsonKey(name: 'battery_level')
   final int? batteryLevel;
 
+  @JsonKey(name: 'raw_payload')
+  final Map<String, dynamic>? rawPayload;
+
   SosPayloadModel({
     required this.deviceUid,
     required this.detectedType,
@@ -30,6 +33,7 @@ class SosPayloadModel {
     this.lon,
     this.altitude,
     this.batteryLevel,
+    this.rawPayload,
   });
 
   // Создаем копию с GPS данными
@@ -40,6 +44,7 @@ class SosPayloadModel {
       severity: severity,
       timestamp: timestamp,
       batteryLevel: batteryLevel,
+      rawPayload: rawPayload,
       lat: lat,
       lon: lon,
       altitude: alt,
