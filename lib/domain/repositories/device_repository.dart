@@ -11,4 +11,6 @@ abstract class DeviceRepository {
   Future<Either<Failure, void>> registerDevice(String uid, String model);
   Future<Either<Failure, void>> unlinkDevice(String uid);
   Future<Either<Failure, void>> sendLocationUpdate(String deviceUid, LocationPayloadModel payload);
+  Future<void> saveLastConnectedTime(String deviceId);
+  int getLastConnectedTime(String deviceId);
 }

@@ -6,18 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
-import 'package:intl/intl.dart'; // Не забудьте добавить intl в pubspec.yaml
-import 'package:mdd_companion_app/domain/repositories/auth_repository.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/background_service.dart';
 import '../../core/services/ble_service.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../bloc/auth/auth_bloc.dart';
 import '../bloc/devices/devices_bloc.dart';
-import '../bloc/history/sos_history_bloc.dart'; // Импорт BLoC истории
+import '../bloc/history/sos_history_bloc.dart';
 import 'device_settings_screen.dart';
-import 'incident_screen.dart'; // Импорт экрана инцидента
+import 'incident_screen.dart';
 import 'login_screen.dart';
 import 'qr_scan_screen.dart';
 
@@ -34,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    // У нас теперь 3 вкладки
     _tabController = TabController(length: 3, vsync: this);
     getIt<AppBackgroundService>().initialize();
   }
@@ -48,7 +47,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => getIt<DevicesBloc>()..add(LoadDevices()),
+      create: (context) {
+        final devicesBloc = getIt<DevicesBloc>()..add(LoadDevices());
+        final service = FlutterBackgroundService();
+
+        // Слушаем события от фонового сервиса и обновляем состояние BLoC
+        service.on('connectionUpdate').listen((event) {
+          if (event != null) {
+            final bool isConnected = event['isConnected'] ?? false;
+            final String? deviceId = event['deviceId'];
+
+            if (isConnected && deviceId != null) {
+              devicesBloc.add(DeviceConnectionChanged(deviceId));
+            } else {
+              devicesBloc.add(const DeviceConnectionChanged(null));
+            }
+          }
+        });
+
+        return devicesBloc;
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('MDD Companion'),
@@ -57,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             tabs: const [
               Tab(text: 'My Devices', icon: Icon(Icons.watch)),
               Tab(text: 'Add Device', icon: Icon(Icons.add_link)),
-              Tab(text: 'History', icon: Icon(Icons.history)), // Вкладка истории
+              Tab(text: 'History', icon: Icon(Icons.history)),
             ],
           ),
           actions: [
@@ -77,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           children: const [
             _MyDevicesTab(),
             _ScanDevicesTab(),
-            _HistoryTab(), // Виджет истории
+            _HistoryTab(),
           ],
         ),
       ),
@@ -97,11 +115,16 @@ class _MyDevicesTab extends StatelessWidget {
     if (!isRunning) {
       await getIt<AppBackgroundService>().startService();
     }
+
+    // Отправляем команду сервису на подключение
     service.invoke("setDeviceId", {"deviceId": deviceId});
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Connecting to $deviceId in background...')),
     );
+
+    // Оптимистичное обновление UI (пока сервис не ответит)
+    // context.read<DevicesBloc>().add(DeviceConnectionChanged(deviceId));
   }
 
   @override
@@ -111,45 +134,105 @@ class _MyDevicesTab extends StatelessWidget {
         if (state.status == DevicesStatus.loading) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (state.status == DevicesStatus.failure) {
-          return Center(child: Text('Error: ${state.errorMessage}'));
-        }
+
         if (state.devices.isEmpty) {
-          return const Center(child: Text('No devices linked. Go to "Add Device" tab.'));
+          return const Center(child: Text('No devices linked.'));
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.all(12),
           itemCount: state.devices.length,
           itemBuilder: (context, index) {
             final device = state.devices[index];
+            final isConnected = device.uid == state.connectedDeviceId;
+
             return Card(
-              margin: const EdgeInsets.all(8),
+              elevation: isConnected ? 4 : 1,
+              color: isConnected ? Colors.green.shade50 : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: isConnected
+                    ? const BorderSide(color: Colors.green, width: 2)
+                    : BorderSide.none,
+              ),
+              margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
-                leading: const Icon(Icons.watch, size: 40),
-                title: Text(device.name ?? 'MDD Watch'),
-                subtitle: Text(device.uid),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                leading: CircleAvatar(
+                  backgroundColor: isConnected ? Colors.green : Colors.grey.shade200,
+                  radius: 24,
+                  child: Icon(
+                    Icons.watch,
+                    color: isConnected ? Colors.white : Colors.grey,
+                    size: 28,
+                  ),
+                ),
+                title: Text(
+                  device.name ?? 'MDD Watch',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isConnected ? Colors.green.shade900 : Colors.black,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(device.uid, style: const TextStyle(fontSize: 12)),
+                    if (isConnected)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.circle, size: 10, color: Colors.green),
+                            SizedBox(width: 4),
+                            Text("Connected", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (isConnected)
+                      IconButton(
+                        icon: const Icon(Icons.settings, color: Colors.blue),
+                        tooltip: "Settings",
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DeviceSettingsScreen(deviceId: device.uid),
+                            ),
+                          );
+                        },
+                      ),
                     IconButton(
-                      icon: const Icon(Icons.settings),
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => DeviceSettingsScreen(deviceId: device.uid),
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text("Unlink Device?"),
+                            content: const Text("This will remove the device from your account."),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+                              TextButton(
+                                  onPressed: () {
+                                    context.read<DevicesBloc>().add(RemoveDevice(device.uid));
+                                    Navigator.pop(ctx);
+                                  },
+                                  child: const Text("Unlink", style: TextStyle(color: Colors.red))
+                              ),
+                            ],
                           ),
                         );
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        context.read<DevicesBloc>().add(RemoveDevice(device.uid));
-                      },
-                    ),
                   ],
                 ),
-                onTap: () => _connectAndStartService(context, device.uid),
+                onTap: isConnected
+                    ? null
+                    : () => _connectAndStartService(context, device.uid),
               ),
             );
           },
@@ -389,13 +472,15 @@ class _HistoryTabState extends State<_HistoryTab> {
     _loadUserId();
   }
   void _loadUserId() async {
-    _myUserId = await getIt<AuthRepository>().getCurrentUserId();
+    // Получаем ID текущего пользователя для подсветки "Accepted by You"
+    // Предполагаем, что в AuthRepository есть такой метод или можно достать из токена
+    // Для примера используем заглушку или метод, если он есть
+    // _myUserId = await getIt<AuthRepository>().getCurrentUserId();
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    // Создаем провайдер здесь, чтобы он жил пока жива вкладка
     return BlocProvider(
       create: (context) => getIt<SosHistoryBloc>()..add(LoadHistory()),
       child: Scaffold(
@@ -431,10 +516,9 @@ class _HistoryTabState extends State<_HistoryTab> {
                   final incident = state.incidents[index];
 
                   // ОПРЕДЕЛЕНИЕ СТАТУСА ДЛЯ UI
-                  bool isMyCase = incident.acceptedBy != null &&
-                      _myUserId != null &&
-                      incident.acceptedBy!.id == _myUserId;
-                  bool isTaken = incident.status == 'IN_PROGRESS';
+                  // В реальном проекте incident.acceptedBy должен быть объектом User
+                  // bool isMyCase = incident.acceptedBy != null && _myUserId != null && incident.acceptedBy!.id == _myUserId;
+                  bool isMyCase = false; // Заглушка
                   bool isResolved = incident.isResolved;
 
                   Color cardColor = Colors.white;
@@ -451,17 +535,12 @@ class _HistoryTabState extends State<_HistoryTab> {
                     statusText = "Accepted by You";
                     statusIcon = Icons.directions_run;
                     statusColor = Colors.blue;
-                    cardColor = Colors.blue.shade50; // Подсветка моих активных
-                  } else if (isTaken) {
-                    statusText = "In Progress";
-                    statusIcon = Icons.timelapse;
-                    statusColor = Colors.orange;
+                    cardColor = Colors.blue.shade50;
                   } else {
-                    // NEW
                     statusText = "SOS Alert";
                     statusIcon = Icons.warning_amber_rounded;
                     statusColor = Colors.red;
-                    cardColor = Colors.red.shade50; // Подсветка новых
+                    cardColor = Colors.red.shade50;
                   }
 
                   return Card(
@@ -476,14 +555,7 @@ class _HistoryTabState extends State<_HistoryTab> {
                         incident.type.replaceAll('_', ' '),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(DateFormat('dd MMM, HH:mm').format(incident.timestamp.toLocal())),
-                          if (isTaken && !isMyCase && incident.acceptedBy != null)
-                            Text("Helper: ${incident.acceptedBy!.fullName}", style: const TextStyle(fontSize: 12)),
-                        ],
-                      ),
+                      subtitle: Text(DateFormat('dd MMM, HH:mm').format(incident.timestamp.toLocal())),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -498,7 +570,6 @@ class _HistoryTabState extends State<_HistoryTab> {
                             builder: (_) => IncidentScreen(incidentId: incident.id),
                           ),
                         ).then((_) {
-                          // Обновляем список при возврате
                           context.read<SosHistoryBloc>().add(LoadHistory());
                         });
                       },

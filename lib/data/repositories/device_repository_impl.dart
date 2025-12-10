@@ -101,4 +101,14 @@ class DeviceRepositoryImpl implements DeviceRepository {
       return Left(ServerFailure(e.message ?? 'Failed to send location'));
     }
   }
+
+  @override
+  Future<void> saveLastConnectedTime(String deviceId) async {
+    await _settingsBox.put('last_seen_$deviceId', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  @override
+  int getLastConnectedTime(String deviceId) {
+    return _settingsBox.get('last_seen_$deviceId', defaultValue: 0);
+  }
 }
